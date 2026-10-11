@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fantasy Server League v2</title>
+<style>
+:root{--bg:#f4f4f5;--card:#fff;--text:#18181b;--muted:#71717a;--accent:#2563eb;--green:#16a34a;--gold:#d97706;--border:#d4d4d8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:auto;padding:14px}.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.top h1{margin:0;font-size:27px}.muted{color:var(--muted);font-size:13px}
+nav{display:flex;gap:6px;overflow:auto;margin:14px 0}.nav{white-space:nowrap}.nav.active{background:#18181b;color:white}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{min-height:42px}
+input,select,button{font:inherit;border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:#fff}button{cursor:pointer;font-weight:650}.primary{background:var(--accent);color:#fff;border-color:var(--accent)}.danger{color:#b91c1c}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.bingo{min-height:92px;text-align:left;padding:7px;display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--border);border-radius:10px;background:#fff;font:inherit;cursor:pointer}.bingo.done{background:#dcfce7;border-color:#86efac}.bingo.free{background:#fef3c7}.bingo .minus{padding:2px 8px;min-height:auto;border-radius:7px}
+.scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}.score{border:1px solid var(--border);border-radius:12px;padding:11px}.score strong{font-size:25px;display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.player{border:1px solid var(--border);border-radius:14px;padding:12px}.player h3{margin:0 0 4px}.badge{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:3px 8px;font-size:12px;margin:2px}
+.stat{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}.stars{letter-spacing:1px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:13px}
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#18181b;color:white;padding:10px 14px;border-radius:10px;display:none}
+.chatlog{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px}
+.msg{background:#f4f4f5;border-radius:10px;padding:6px 10px;font-size:13px;max-width:85%;align-self:flex-start}
+.msg.me{align-self:flex-end;background:#dbeafe}
+.msg b{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;font-weight:650}
+@media(max-width:560px){main{padding:9px}.top h1{font-size:22px}.grid{gap:3px}.bingo{min-height:82px;padding:5px;font-size:11px}.bingo .pts{font-weight:800}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<div class="top"><div><h1>🏆 Fantasy Server League</h1><div class="muted">Version 2 • Draft your team. Score the shift. Crown the MVP.</div></div><button id="reset" class="danger">New Season</button></div>
+<nav id="nav"></nav>
+
+<section id="setup" class="view"></section>
+<section id="draft" class="view" style="display:none"></section>
+<section id="score" class="view" style="display:none"></section>
+<section id="league" class="view" style="display:none"></section>
+<section id="rules" class="view" style="display:none"></section>
+<section id="chat" class="view" style="display:none"></section>
+</main>
+<div id="toast" class="toast"></div>
+
+<script>
+const REAL_TASKS=[
+["Turkey Wings",4],["Stuffed Flounder",5],["Short Ribs",5],["Southern Fried Shrimp",3],
+["Southern Fried Fish",3],["Crabcake Salmon",5],["Cakes",2],["Chicken Tenders",2],
+["Big Mama White",3],["Big Mama Dark",3],["Salmon",4],["Flatbread Pizza",3],
+["Burger",2],["Fried Pork Chops",3],["Country",3],["Fried Chicken",2],
+["Grilled Pork Chops Salad",3],["Seafood Platter",5],["Buffalo Shrimp",3],["Mouth of the South",3],
+["Fried Okra",2],["Fried Pickles",2],["Catfish Bites",3],["Salmon Bites",4],
+["Herb",3],["Roasted Chicken",3],["⏱️ Ticket Time Bonus",5]
+];
+const TICKET_IDX=REAL_TASKS.findIndex(t=>t[0].includes("Ticket Time Bonus"));
+const BOARD_SIZE=25;
+function teamLabel(t){return t?t:"Solo"}
+function taskName(poolIdx){return poolIdx===TICKET_IDX?`⏱️ Ticket Time Bonus (${S.rush?20:12} min goal)`:REAL_TASKS[poolIdx][0]}
+function taskPts(poolIdx){return REAL_TASKS[poolIdx][1]}
+function randomBoard(){
+ let pool=REAL_TASKS.map((t,i)=>i).filter(i=>i!==TICKET_IDX);
+ for(let i=pool.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]]}
+ let picked=pool.slice(0,BOARD_SIZE-1);
+ while(picked.length<BOARD_SIZE-1){picked.push(pool[Math.floor(Math.random()*pool.length)])}
+ picked.push(TICKET_IDX);
+ for(let i=picked.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[picked[i],picked[j]]=[picked[j],picked[i]]}
+ return picked;
+}
+function createServer(name,team){
+ return {id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,team,board:randomBoard(),done:Array(BOARD_SIZE).fill(0),skill:Object.fromEntries(skills.map(x=>[x,3])),bingoLines:0,clutch:false,full:false};
+}
+const skills=["Sales","Upselling","Speed","Accuracy","Guest Experience"];
+let S=JSON.parse(localStorage.getItem("fantasyServerLeagueV2")||"null")||{
+teams:["Team 1","Team 2"],servers:[],week:1,shift:1,history:[],current:null,rush:false
+};
+if(S.rush===undefined)S.rush=false;
+(S.servers||[]).forEach(s=>{if(!s.board||s.board.length!==BOARD_SIZE){s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false}});
+let currentView="setup";
+function save(){localStorage.setItem("fantasyServerLeagueV2",JSON.stringify(S));render()}
+function render(){renderView(currentView)}
+function esc(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function toast(x){let t=document.getElementById("toast");t.textContent=x;t.style.display="block";setTimeout(()=>t.style.display="none",1300)}
+function stars(n){return "★".repeat(n)+"☆".repeat(5-n)}
+function serverScore(s){return s.board.reduce((a,poolIdx,i)=>a+(s.done[i]||0)*taskPts(poolIdx),0)+(s.bingoLines||0)*5+((s.bingoLines||0)>=2?5:0)+(s.clutch?10:0)+(s.full?25:0)}
+function lines(s){let d=s.done,a=[];for(let r=0;r<5;r++)a.push([0,1,2,3,4].map(c=>r*5+c));for(let c=0;c<5;c++)a.push([0,1,2,3,4].map(r=>r*5+c));a.push([0,6,12,18,24],[4,8,12,16,20]);return a.filter(x=>x.every(i=>d[i]));}
+function teamScore(team){return S.servers.filter(s=>s.team===team).reduce((a,s)=>a+serverScore(s),0)}
+function nav(active){
+ document.getElementById("nav").innerHTML=[["setup","⚙️ Setup"],["draft","🎯 Draft"],["score","📝 Scorekeeper"],["league","🏆 League"],["chat","💬 Chat"],["rules","📋 Rules"]].map(x=>`<button class="nav ${active===x[0]?"active":""}" onclick="show('${x[0]}')">${x[1]}</button>`).join("");
+}
+function show(id){currentView=id;document.querySelectorAll(".view").forEach(x=>x.style.display="none");document.getElementById(id).style.display="block";nav(id);renderView(id)}
+function renderView(id){if(id==="setup")renderSetup();if(id==="draft")renderDraft();if(id==="score")renderScore();if(id==="league")renderLeague();if(id==="rules")renderRules();if(id==="chat")renderChat()}
+function renderSetup(){
+ let v=document.getElementById("setup");
+ v.innerHTML=`<div class="panel"><h2>⚙️ League Setup</h2><div class="row">
+ <input id="tn" placeholder="Team name"><button class="primary" onclick="addTeam()">Add Team</button>
+ <input id="sn" placeholder="Server name"><select id="st"><option value="">Solo (no team)</option>${S.teams.map(t=>`<option>${esc(t)}</option>`).join("")}</select><button onclick="addServer()">Add Server</button></div>
+ <p class="muted">Create teams first, then add your servers. You can change teams later from the Draft tab.</p></div>
+ <div class="panel"><h2>Teams</h2><div class="scores">${S.teams.map(t=>`<div class="score"><b>${esc(t)}</b><strong>${teamScore(t)}</strong><span class="muted">${S.servers.filter(s=>s.team===t).length} servers</span></div>`).join("")}</div></div>`;
+}
+function addTeam(){let n=document.getElementById("tn").value.trim();if(!n)return;S.teams.push(n);save();toast("Team added")}
+function addServer(){let n=document.getElementById("sn").value.trim(),team=document.getElementById("st").value;if(!n)return;S.servers.push(createServer(n,team));save();toast("Server added")}
+function renderDraft(){
+ let v=document.getElementById("draft");
+ v.innerHTML=`<div class="panel"><h2>🎯 Draft Room</h2>
+ <div class="row"><input id="jn" placeholder="Your name"><select id="jt"><option value="">Solo (no team)</option>${S.teams.map(t=>`<option>${esc(t)}</option>`).join("")}</select><button class="primary" onclick="joinTeam()">Join Team</button></div>
+ <p class="muted">Type your name and pick a team to join right here, or use the team selector on an existing player card. Each player gets their own randomized 25-square board. Ratings are 1–5 and are for your league's own game only.</p></div><div class="cards">${S.servers.map(s=>`<div class="player"><div class="row" style="justify-content:space-between"><h3>${esc(s.name)}</h3><button class="danger" style="padding:3px 9px;min-height:auto" onclick="removeServer('${s.id}')">🗑️ Remove</button></div><span class="badge">${esc(teamLabel(s.team))}</span><select onchange="move('${s.id}',this.value)"><option value="">Solo (no team)</option>${S.teams.map(t=>`<option ${t===s.team?"selected":""}>${esc(t)}</option>`).join("")}</select>${skills.map(k=>`<div class="stat"><span>${k}</span><span class="stars">${stars(s.skill[k])}</span></div>`).join("")}<div class="row" style="margin-top:7px">${skills.map(k=>`<button onclick="skill('${s.id}','${k}',-1)">−</button><button onclick="skill('${s.id}','${k}',1)">+ ${k}</button>`).join("")}</div></div>`).join("")||'<p class="muted">Add servers in Setup or Join Team above.</p>'}</div>`;
+}
+function joinTeam(){let n=document.getElementById("jn").value.trim(),t=document.getElementById("jt").value;if(!n)return;S.servers.push(createServer(n,t));save();toast(n+" joined "+teamLabel(t))}
+function move(id,t){let s=S.servers.find(x=>x.id===id);s.team=t;save()}
+function removeServer(id){if(!confirm("Remove this player? This can't be undone."))return;S.servers=S.servers.filter(x=>x.id!==id);if(S.current===id)S.current=null;save();toast("Player removed")}
+function skill(id,k,d){let s=S.servers.find(x=>x.id===id);s.skill[k]=Math.max(1,Math.min(5,s.skill[k]+d));save()}
+function toggleRush(){S.rush=!S.rush;save()}
+function shuffleBoard(){let s=S.servers.find(x=>x.id===S.current);if(!s)return;s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false;save();toast("New board dealt!")}
+function renderScore(){
+ let v=document.getElementById("score"),cur=S.current&&S.servers.find(s=>s.id===S.current);if(!cur&&S.servers[0]){S.current=S.servers[0].id;cur=S.servers[0]}
+ v.innerHTML=`<div class="panel"><div class="row"><select onchange="S.current=this.value;renderScore()">${S.servers.map(s=>`<option value="${s.id}" ${s.id===S.current?"selected":""}>${esc(s.name)} — ${esc(teamLabel(s.team))}</option>`).join("")}</select><button onclick="toggleRush()">${S.rush?"🔥 Rush Hour (20 min)":"🕒 Normal Hours (12 min)"}</button><button onclick="shuffleBoard()">🔀 New Board</button><button onclick="completeShift()">🏁 End Shift</button><button onclick="clearCurrent()">Clear Player</button></div></div>`;
+ if(!cur){v.innerHTML+=`<div class="panel muted">Add servers first.</div>`;return}
+ let ls=lines(cur),score=serverScore(cur);
+ v.innerHTML+=`<div class="panel"><h2>${esc(cur.name)} • ${score} pts</h2><div class="muted">${esc(teamLabel(cur.team))} • ${ls.length} completed Bingo lines${cur.clutch?" • 🔥 Clutch +10":""}${cur.full?" • 🏆 Full Card +25":""}</div><div class="grid" style="margin-top:12px">${cur.board.map((poolIdx,i)=>{let n=cur.done[i]||0,name=taskName(poolIdx),pts=taskPts(poolIdx);return `<div class="bingo ${n>0?"done":""}" onclick="mark('${cur.id}',${i},1)"><span class="pts">+${pts} ea</span><span>${esc(name)}</span><span class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:4px">${n>0?`<span>×${n} • ${n*pts} pts</span><button class="minus" onclick="event.stopPropagation();mark('${cur.id}',${i},-1)">−</button>`:"<span>tap to ring up</span>"}</span></div>`}).join("")}</div><button class="bingo free" style="width:100%;margin-top:8px" onclick="bingo('${cur.id}')"><span class="pts">BINGO</span><span>🎰 Complete a line</span><span class="muted">+10 first / lines +5</span></button></div>`;
+}
+function mark(id,i,delta){let s=S.servers.find(x=>x.id===id);s.done[i]=Math.max(0,(s.done[i]||0)+delta);s.bingoLines=lines(s).length;if(s.bingoLines&&!S.servers.some(x=>x.clutch))s.clutch=true;s.full=s.done.every(Boolean);save();toast(delta>0?"Rung up":"Removed one")}
+function bingo(id){let s=S.servers.find(x=>x.id===id);s.bingoLines=lines(s).length;if(!s.bingoLines)return toast("Complete a row, column, or diagonal first.");if(!S.servers.some(x=>x.clutch))s.clutch=true;save();toast("BINGO!")}
+function clearCurrent(){let s=S.servers.find(x=>x.id===S.current);if(!s)return;s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false;save()}
+function completeShift(){S.history.push({week:S.week,shift:S.shift,date:new Date().toLocaleDateString(),scores:S.servers.map(s=>({name:s.name,team:s.team,score:serverScore(s)}))});S.shift++;S.servers.forEach(s=>{s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false});save();toast("Shift saved! New boards dealt.")}
+function renderLeague(){
+ let v=document.getElementById("league"),ts=[...S.teams].sort((a,b)=>teamScore(b)-teamScore(a));
+ let ps=[...S.servers].sort((a,b)=>serverScore(b)-serverScore(a));
+ v.innerHTML=`<div class="panel"><div class="row"><h2 style="margin:0">🏆 Current Standings</h2><span class="muted">Week ${S.week} • Shift ${S.shift}</span></div><table><tr><th>#</th><th>Team</th><th>Points</th><th>Servers</th></tr>${ts.map((t,i)=>`<tr><td>${i+1}</td><td>${esc(t)}</td><td><b>${teamScore(t)}</b></td><td>${S.servers.filter(s=>s.team===t).length}</td></tr>`).join("")}</table></div>
+ <div class="panel"><h2>⭐ MVP Race</h2><table><tr><th>#</th><th>Server</th><th>Team</th><th>Points</th></tr>${ps.map((s,i)=>`<tr><td>${i+1}</td><td>${i===0?"🏆 ":""}${esc(s.name)}</td><td>${esc(teamLabel(s.team))}</td><td><b>${serverScore(s)}</b></td></tr>`).join("")||'<tr><td colspan="4">No servers yet.</td></tr>'}</table></div>
+ <div class="panel"><h2>📅 Shift History</h2>${S.history.length?S.history.slice().reverse().map(h=>`<div class="score" style="margin-bottom:7px"><b>Week ${h.week}, Shift ${h.shift}</b><span class="muted">${h.date}</span><div>${h.scores.map(x=>`${esc(x.name)}: ${x.score}`).join(" • ")}</div></div>`).join(""):"<span class='muted'>No completed shifts yet.</span>"}</div>`;
+}
+function renderRules(){
+ document.getElementById("rules").innerHTML=`<div class="panel"><h2>📋 League Rules</h2><ul><li>Each time you ring up an item on your board, its printed points are added — selling it again stacks more points.</li><li>Every player gets their own random 25-square (5×5) board — a fresh one is dealt automatically at the start of each shift, or tap 🔀 New Board in Scorekeeper to redeal early.</li><li>Each completed row, column, or diagonal is worth +5. Completing 2+ lines earns an additional +5 bonus.</li><li>The first server to complete a Bingo line gets 🔥 Clutch +10.</li><li>A full 25-square card earns 🏆 +25.</li><li>Every board includes a ⏱️ Ticket Time Bonus square. Toggle Rush Hour / Normal Hours in Scorekeeper to set the goal — 20 minutes during a rush, 12 minutes during normal times — then ring it up each time a ticket beats the goal.</li><li>Use the Scorekeeper tab during the shift; End Shift records results and deals fresh boards for the next shift.</li><li>Skill ratings are optional role-play stats and do not change points automatically.</li></ul></div><div class="panel"><h2>💡 Suggested Awards</h2><div class="badges"><span class="badge">🏆 MVP — highest individual score</span><span class="badge">🔥 Clutch — first Bingo</span><span class="badge">🤝 Sixth Man — teamwork</span><span class="badge">💰 Closer — sales/upsells</span><span class="badge">🎯 Lockdown — accuracy</span></div></div>`;
+}
+document.getElementById("reset").onclick=()=>{if(confirm("Erase the entire league, teams, players, and history?")){localStorage.removeItem("fantasyServerLeagueV2");location.reload()}};
+
+let room=null, roomUser=null, chatLog=[];
+async function initRoom(){
+ if(!window.claude||!window.claude.use)return;
+ try{
+  room=await window.claude.use("room");
+  if(!room)return;
+  roomUser=await window.claude.use("user");
+  room.on("chat",async msg=>{
+   let name="Guest";
+   if(msg.by&&roomUser){try{let ps=await roomUser.profiles([msg.by]);name=(ps[msg.by]&&ps[msg.by].name)||"Someone"}catch(e){}}
+   chatLog.push({name,text:(msg.data&&msg.data.text)||"",isMe:msg.isMe});
+   if(chatLog.length>100)chatLog.shift();
+   if(currentView==="chat")renderChat();
+  });
+  if(currentView==="chat")renderChat();
+ }catch(e){}
+}
+function renderChat(){
+ let v=document.getElementById("chat");
+ v.innerHTML=`<div class="panel"><h2>💬 Live Chat</h2><p class="muted">Live between everyone who has this page open right now — nothing is saved after you close it.</p>
+ <div class="chatlog" id="chatlog">${chatLog.length?chatLog.map(m=>`<div class="msg ${m.isMe?"me":""}"><b>${esc(m.name)}</b>${esc(m.text)}</div>`).join(""):'<span class="muted">No messages yet. Say hi 👋</span>'}</div>
+ <div class="row" style="margin-top:8px"><input id="chatInput" placeholder="${room?"Type a message…":"Live chat unavailable in this view"}" ${room?"":"disabled"} onkeydown="if(event.key==='Enter')sendChat()" style="flex:1 1 auto"><button class="primary" onclick="sendChat()" ${room?"":"disabled"}>Send</button></div></div>`;
+ let log=document.getElementById("chatlog");if(log)log.scrollTop=log.scrollHeight;
+}
+async function sendChat(){
+ let input=document.getElementById("chatInput");if(!input)return;
+ let text=input.value.trim();if(!text||!room)return;
+ input.value="";
+ try{await room.emit("chat",{text})}catch(e){toast("Message failed to send")}
+}
+initRoom();
+show("setup");
+</script>
+</body></html>
