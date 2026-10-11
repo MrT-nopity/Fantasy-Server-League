@@ -1,4 +1,4 @@
-# 🏆 Fantasy Server League
+# 🏆 Southern Kitchen Fantasy Server League
 
 Turn a restaurant shift into a fantasy sports season. Draft your servers onto teams, hand everyone a randomized bingo board of menu items, and rack up points for every upsell, big check, and fast ticket — all from a single HTML file with no install required.
 
