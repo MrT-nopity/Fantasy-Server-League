@@ -18,10 +18,6 @@ input,select,button{font:inherit;border:1px solid var(--border);border-radius:10
 .stat{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}.stars{letter-spacing:1px}
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:13px}
 .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#18181b;color:white;padding:10px 14px;border-radius:10px;display:none;z-index:10000}
-.chatlog{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px}
-.msg{background:#f4f4f5;border-radius:10px;padding:6px 10px;font-size:13px;max-width:85%;align-self:flex-start}
-.msg.me{align-self:flex-end;background:#dbeafe}
-.msg b{display:block;font-size:11px;color:var(--muted);margin-bottom:2px;font-weight:650}
 @media(max-width:560px){main{padding:9px}.top h1{font-size:20px}.grid{gap:3px}.bingo{min-height:82px;padding:5px;font-size:11px}.bingo .pts{font-weight:800}.cards{grid-template-columns:1fr}}
 </style>
 </head>
@@ -35,7 +31,6 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;bord
 <section id="score" class="view" style="display:none"></section>
 <section id="league" class="view" style="display:none"></section>
 <section id="rules" class="view" style="display:none"></section>
-<section id="chat" class="view" style="display:none"></section>
 </main>
 <div id="toast" class="toast"></div>
 
@@ -59,7 +54,7 @@ teams:["Team 1","Team 2"],servers:[],week:1,shift:1,history:[],current:null,rush
 function teamLabel(t){return t?t:"Solo"}
 function ticketIdx(){return S.menu.length}
 function pool(){return [...S.menu,TICKET_ITEM]}
-function taskName(poolIdx){return poolIdx===ticketIdx()?`⏱️ Ticket Time Bonus (${S.rush?20:12} min goal)`:pool()[poolIdx][0]}
+function taskName(poolIdx){return poolIdx===ticketIdx()?`⏱️ Ticket Time Check (tickets under ${S.rush?30:20} min — tap every ${S.rush?30:20} min to log a check)`:pool()[poolIdx][0]}
 function taskPts(poolIdx){return pool()[poolIdx][1]}
 function randomBoard(){
  let idxs=S.menu.map((m,i)=>i);
@@ -70,13 +65,13 @@ function randomBoard(){
  for(let i=picked.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[picked[i],picked[j]]=[picked[j],picked[i]]}
  return picked;
 }
-function reshuffleAllBoards(){S.servers.forEach(s=>{s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false})}
+function reshuffleAllBoards(){S.servers.forEach(s=>{s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false;s.bonusPts=0;s.powerupReady=true;s.powerupArmed=false;s.lastTicketCheck=0})}
 function createServer(name,team){
- return {id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,team,board:randomBoard(),done:Array(BOARD_SIZE).fill(0),skill:Object.fromEntries(skills.map(x=>[x,3])),bingoLines:0,clutch:false,full:false};
+ return {id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,team,board:randomBoard(),done:Array(BOARD_SIZE).fill(0),skill:Object.fromEntries(skills.map(x=>[x,3])),bingoLines:0,clutch:false,full:false,bonusPts:0,powerupReady:true,powerupArmed:false,lastTicketCheck:0};
 }
 if(!S.menu||S.menuVersion!==MENU_VERSION){S.menu=DEFAULT_MENU.map(x=>[...x]);S.menuVersion=MENU_VERSION;S.servers.forEach(s=>{s.board=null})}
 if(S.rush===undefined)S.rush=false;
-(function(){let poolSize=S.menu.length+1;(S.servers||[]).forEach(s=>{if(!s.board||s.board.length!==BOARD_SIZE||s.board.some(i=>i>=poolSize)){s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false}})})();
+(function(){let poolSize=S.menu.length+1;(S.servers||[]).forEach(s=>{if(!s.board||s.board.length!==BOARD_SIZE||s.board.some(i=>i>=poolSize)){s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false}if(s.bonusPts===undefined)s.bonusPts=0;if(s.powerupReady===undefined)s.powerupReady=true;if(s.powerupArmed===undefined)s.powerupArmed=false;if(s.lastTicketCheck===undefined)s.lastTicketCheck=0})})();
 let currentView="setup";
 function save(){localStorage.setItem("fantasyServerLeagueV2",JSON.stringify(S));render()}
 function render(){renderView(currentView)}
@@ -93,14 +88,14 @@ function celebrate(){
   setTimeout(()=>p.remove(),1200);
  }
 }
-function serverScore(s){return s.board.reduce((a,poolIdx,i)=>a+(s.done[i]||0)*taskPts(poolIdx),0)+(s.bingoLines||0)*5+((s.bingoLines||0)>=2?5:0)+(s.clutch?10:0)+(s.full?25:0)}
+function serverScore(s){return s.board.reduce((a,poolIdx,i)=>a+(s.done[i]||0)*taskPts(poolIdx),0)+(s.bonusPts||0)+(s.bingoLines||0)*5+((s.bingoLines||0)>=2?5:0)+(s.clutch?10:0)+(s.full?25:0)}
 function lines(s){let d=s.done,a=[];for(let r=0;r<5;r++)a.push([0,1,2,3,4].map(c=>r*5+c));for(let c=0;c<5;c++)a.push([0,1,2,3,4].map(r=>r*5+c));a.push([0,6,12,18,24],[4,8,12,16,20]);return a.filter(x=>x.every(i=>d[i]));}
 function teamScore(team){return S.servers.filter(s=>s.team===team).reduce((a,s)=>a+serverScore(s),0)}
 function nav(active){
- document.getElementById("nav").innerHTML=[["setup","⚙️ Setup"],["draft","🎯 Draft"],["score","📝 Scorekeeper"],["league","🏆 League"],["chat","💬 Chat"],["rules","📋 Rules"]].map(x=>`<button class="nav ${active===x[0]?"active":""}" onclick="show('${x[0]}')">${x[1]}</button>`).join("");
+ document.getElementById("nav").innerHTML=[["setup","⚙️ Setup"],["draft","🎯 Draft"],["score","📝 Scorekeeper"],["league","🏆 League"],["rules","📋 Rules"]].map(x=>`<button class="nav ${active===x[0]?"active":""}" onclick="show('${x[0]}')">${x[1]}</button>`).join("");
 }
 function show(id){currentView=id;document.querySelectorAll(".view").forEach(x=>x.style.display="none");document.getElementById(id).style.display="block";nav(id);renderView(id)}
-function renderView(id){if(id==="setup")renderSetup();if(id==="draft")renderDraft();if(id==="score")renderScore();if(id==="league")renderLeague();if(id==="rules")renderRules();if(id==="chat")renderChat()}
+function renderView(id){if(id==="setup")renderSetup();if(id==="draft")renderDraft();if(id==="score")renderScore();if(id==="league")renderLeague();if(id==="rules")renderRules()}
 function renderSetup(){
  let v=document.getElementById("setup");
  v.innerHTML=`<div class="panel"><h2>⚙️ League Setup</h2><div class="row">
@@ -127,23 +122,20 @@ function move(id,t){let s=S.servers.find(x=>x.id===id);s.team=t;save()}
 function removeServer(id){if(!confirm("Remove this player? This can't be undone."))return;S.servers=S.servers.filter(x=>x.id!==id);if(S.current===id)S.current=null;save();toast("Player removed")}
 function skill(id,k,d){let s=S.servers.find(x=>x.id===id);s.skill[k]=Math.max(1,Math.min(5,s.skill[k]+d));save()}
 function toggleRush(){S.rush=!S.rush;save()}
-function shuffleBoard(){let s=S.servers.find(x=>x.id===S.current);if(!s)return;s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false;save();toast("New board dealt!")}
-let ticketStart=null,ticketTimer=null;
-function startTicket(){ticketStart=Date.now();clearInterval(ticketTimer);ticketTimer=setInterval(tickTicket,1000);tickTicket()}
-function tickTicket(){let el=document.getElementById("ticketClock");if(!el||!ticketStart){clearInterval(ticketTimer);return}let secs=Math.floor((Date.now()-ticketStart)/1000),goal=(S.rush?20:12)*60;let mm=String(Math.floor(secs/60)).padStart(2,"0"),ss=String(secs%60).padStart(2,"0");el.textContent=`${mm}:${ss}`;el.style.color=secs<=goal?"#16a34a":"#b91c1c"}
-function stopTicket(award){clearInterval(ticketTimer);ticketStart=null;if(award){let s=S.servers.find(x=>x.id===S.current);if(s){let idx=s.board.indexOf(ticketIdx());if(idx>=0)mark(s.id,idx,1)}}else render()}
+function shuffleBoard(){let s=S.servers.find(x=>x.id===S.current);if(!s)return;s.board=randomBoard();s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false;s.bonusPts=0;s.powerupReady=true;s.powerupArmed=false;s.lastTicketCheck=0;save();toast("New board dealt!")}
+function usePowerup(){let s=S.servers.find(x=>x.id===S.current);if(!s||!s.powerupReady||s.powerupArmed)return;s.powerupArmed=true;s.powerupReady=false;save();toast("⚡ Double Points armed — your next ring-up is worth double!")}
 function renderScore(){
  let v=document.getElementById("score"),cur=S.current&&S.servers.find(s=>s.id===S.current);if(!cur&&S.servers[0]){S.current=S.servers[0].id;cur=S.servers[0]}
- v.innerHTML=`<div class="panel"><div class="row"><select onchange="S.current=this.value;renderScore()">${S.servers.map(s=>`<option value="${s.id}" ${s.id===S.current?"selected":""}>${esc(s.name)} — ${esc(teamLabel(s.team))}</option>`).join("")}</select><button onclick="toggleRush()">${S.rush?"🔥 Rush Hour (20 min)":"🕒 Normal Hours (12 min)"}</button><button onclick="shuffleBoard()">🔀 New Board</button><button onclick="completeShift()">🏁 End Shift</button><button onclick="clearCurrent()">Clear Player</button></div>
- <div class="row" style="margin-top:8px" id="ticketBtns"><button onclick="startTicket()">⏱️ Start Ticket</button><span id="ticketClock" style="font-weight:700;min-width:60px;text-align:center">00:00</span><button class="primary" onclick="stopTicket(true)">✅ Beat the Goal</button><button onclick="stopTicket(false)">⏹️ Stop</button></div></div>`;
+ v.innerHTML=`<div class="panel"><div class="row"><select onchange="S.current=this.value;renderScore()">${S.servers.map(s=>`<option value="${s.id}" ${s.id===S.current?"selected":""}>${esc(s.name)} — ${esc(teamLabel(s.team))}</option>`).join("")}</select><button onclick="toggleRush()">${S.rush?"🔥 Rush Hour (30 min checks)":"🕒 Normal Hours (20 min checks)"}</button><button onclick="shuffleBoard()">🔀 New Board</button><button onclick="completeShift()">🏁 End Shift</button><button onclick="clearCurrent()">Clear Player</button></div></div>`;
  if(!cur){v.innerHTML+=`<div class="panel muted">Add servers first.</div>`;return}
+ v.innerHTML+=`<div class="panel"><div class="row"><button class="primary" onclick="usePowerup()" ${cur.powerupArmed||!cur.powerupReady?"disabled":""}>${cur.powerupArmed?"⚡ Armed — tap an item":(cur.powerupReady?"⚡ Use Double Points (1 per shift)":"⚡ Used this shift")}</button><span class="muted">${cur.powerupArmed?"Your next ring-up is worth 2×":"One free double-points wildcard per shift"}</span></div></div>`;
  let ls=lines(cur),score=serverScore(cur);
  v.innerHTML+=`<div class="panel"><h2>${esc(cur.name)} • ${score} pts</h2><div class="muted">${esc(teamLabel(cur.team))} • ${ls.length} completed Bingo lines${cur.clutch?" • 🔥 Clutch +10":""}${cur.full?" • 🏆 Full Card +25":""}</div><div class="grid" style="margin-top:12px">${cur.board.map((poolIdx,i)=>{let n=cur.done[i]||0,name=taskName(poolIdx),pts=taskPts(poolIdx);return `<div class="bingo ${n>0?"done":""}" onclick="mark('${cur.id}',${i},1)"><span class="pts">+${pts} ea</span><span>${esc(name)}</span><span class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:4px">${n>0?`<span>×${n} • ${n*pts} pts</span><button class="minus" onclick="event.stopPropagation();mark('${cur.id}',${i},-1)">−</button>`:"<span>tap to ring up</span>"}</span></div>`}).join("")}</div><button class="bingo free" style="width:100%;margin-top:8px" onclick="bingo('${cur.id}')"><span class="pts">BINGO</span><span>🎰 Complete a line</span><span class="muted">+10 first / lines +5</span></button></div>`;
 }
-function mark(id,i,delta){let s=S.servers.find(x=>x.id===id);let beforeLines=s.bingoLines||0,wasFull=s.full;s.done[i]=Math.max(0,(s.done[i]||0)+delta);s.bingoLines=lines(s).length;if(s.bingoLines&&!S.servers.some(x=>x.clutch))s.clutch=true;s.full=s.done.every(Boolean);if(s.bingoLines>beforeLines||(s.full&&!wasFull))celebrate();save();toast(delta>0?"Rung up":"Removed one")}
+function mark(id,i,delta){let s=S.servers.find(x=>x.id===id);let beforeLines=s.bingoLines||0,wasFull=s.full,msg=delta>0?"Rung up":"Removed one";if(delta>0&&s.board[i]===ticketIdx()){let interval=(S.rush?30:20)*60*1000,now=Date.now();if(s.lastTicketCheck&&now-s.lastTicketCheck<interval){toast(`Next ticket check in ${Math.ceil((interval-(now-s.lastTicketCheck))/60000)} min`);return}s.lastTicketCheck=now}s.done[i]=Math.max(0,(s.done[i]||0)+delta);if(delta>0&&s.powerupArmed){let bonus=taskPts(s.board[i]);s.bonusPts=(s.bonusPts||0)+bonus;s.powerupArmed=false;msg=`⚡ Double Points! +${bonus} bonus`}s.bingoLines=lines(s).length;if(s.bingoLines&&!S.servers.some(x=>x.clutch))s.clutch=true;s.full=s.done.every(Boolean);if(s.bingoLines>beforeLines||(s.full&&!wasFull))celebrate();save();toast(msg)}
 function bingo(id){let s=S.servers.find(x=>x.id===id);let before=s.bingoLines||0;s.bingoLines=lines(s).length;if(!s.bingoLines)return toast("Complete a row, column, or diagonal first.");if(s.bingoLines>before)celebrate();if(!S.servers.some(x=>x.clutch))s.clutch=true;save();toast("BINGO!")}
 function clearCurrent(){let s=S.servers.find(x=>x.id===S.current);if(!s)return;s.done=Array(BOARD_SIZE).fill(0);s.bingoLines=0;s.clutch=false;s.full=false;save()}
-function completeShift(){S.history.push({week:S.week,shift:S.shift,date:new Date().toLocaleDateString(),scores:S.servers.map(s=>({name:s.name,team:s.team,score:serverScore(s)}))});S.shift++;reshuffleAllBoards();save();toast("Shift saved! New boards dealt.")}
+function completeShift(){S.history.push({week:S.week,shift:S.shift,date:new Date().toLocaleDateString(),scores:S.servers.map(s=>({name:s.name,team:s.team,score:serverScore(s),rungUp:s.done.reduce((a,b)=>a+b,0),lines:s.bingoLines||0,unique:s.done.filter(x=>x>0).length,clutch:!!s.clutch,full:!!s.full}))});S.shift++;reshuffleAllBoards();save();toast("Shift saved! New boards dealt.")}
 function computeAwards(){
  if(!S.servers.length)return null;
  let byScore=[...S.servers].sort((a,b)=>serverScore(b)-serverScore(a));
@@ -151,6 +143,45 @@ function computeAwards(){
  let lockdown=[...S.servers].sort((a,b)=>(b.bingoLines||0)-(a.bingoLines||0))[0];
  let sixthMan=[...S.servers].sort((a,b)=>b.done.filter(x=>x>0).length-a.done.filter(x=>x>0).length)[0];
  return {mvp:byScore[0],clutchHolder:S.servers.find(s=>s.clutch)||null,closer,lockdown,sixthMan};
+}
+function lifetimeStats(){
+ let stats={};
+ function ensure(name){if(!stats[name])stats[name]={score:0,rungUp:0,lines:0,unique:0,clutchCount:0};return stats[name]}
+ S.history.forEach(h=>h.scores.forEach(x=>{let r=ensure(x.name);r.score+=x.score||0;r.rungUp+=x.rungUp||0;r.lines+=x.lines||0;r.unique+=x.unique||0;if(x.clutch)r.clutchCount++}));
+ S.servers.forEach(s=>{let r=ensure(s.name);r.score+=serverScore(s);r.rungUp+=s.done.reduce((a,b)=>a+b,0);r.lines+=s.bingoLines||0;r.unique+=s.done.filter(x=>x>0).length;if(s.clutch)r.clutchCount++});
+ return stats;
+}
+function tierFor(value,bronze,silver,gold){if(value>=gold)return"🥇 Gold";if(value>=silver)return"🥈 Silver";if(value>=bronze)return"🥉 Bronze";return null}
+function renderBadgeCase(){
+ let stats=lifetimeStats(),names=Object.keys(stats);
+ if(!names.length)return '<p class="muted">Play a few shifts to start earning badges.</p>';
+ return `<div class="cards">${names.map(name=>{
+  let r=stats[name];
+  let badges=[["🏆 MVP",tierFor(r.score,50,150,300)],["🔥 Clutch",tierFor(r.clutchCount,1,5,15)],["💰 Closer",tierFor(r.rungUp,25,75,150)],["🎯 Lockdown",tierFor(r.lines,5,15,30)],["🤝 Sixth Man",tierFor(r.unique,40,100,200)]].filter(b=>b[1]);
+  return `<div class="player"><h3>${esc(name)}</h3>${badges.length?badges.map(b=>`<span class="badge">${b[1]} ${b[0]}</span>`).join(""):'<span class="muted">No badges yet</span>'}</div>`;
+ }).join("")}</div>`;
+}
+function recapText(entry){
+ let byScore=[...entry.scores].sort((a,b)=>b.score-a.score);
+ let closer=[...entry.scores].sort((a,b)=>(b.rungUp||0)-(a.rungUp||0))[0];
+ let lockdown=[...entry.scores].sort((a,b)=>(b.lines||0)-(a.lines||0))[0];
+ let sixth=[...entry.scores].sort((a,b)=>(b.unique||0)-(a.unique||0))[0];
+ let clutch=entry.scores.find(x=>x.clutch);
+ let lines=[`🏆 Southern Kitchen Fantasy League — Week ${entry.week}, Shift ${entry.shift} (${entry.date})`,
+  `🥇 MVP: ${byScore[0].name} — ${byScore[0].score} pts`,
+  clutch?`🔥 Clutch: ${clutch.name}`:null,
+  closer?`💰 Closer: ${closer.name} (${closer.rungUp||0} sales)`:null,
+  lockdown?`🎯 Lockdown: ${lockdown.name} (${lockdown.lines||0} lines)`:null,
+  sixth?`🤝 Sixth Man: ${sixth.name} (${sixth.unique||0} items)`:null,
+  "","Scores:",...byScore.map(x=>`${x.name}: ${x.score}`)
+ ].filter(Boolean);
+ return lines.join("\n");
+}
+function copyRecap(idx){
+ let entry=S.history[idx];if(!entry)return;
+ let text=recapText(entry);
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>toast("Recap copied — paste it in your group chat!")).catch(()=>prompt("Copy this recap:",text))}
+ else prompt("Copy this recap:",text);
 }
 function renderTrendChart(){
  if(!S.history.length)return '<p class="muted">Complete a shift to start seeing trends.</p>';
@@ -179,54 +210,15 @@ function renderLeague(){
  <div class="score"><b>🤝 Sixth Man</b><strong style="font-size:16px">${esc(aw.sixthMan.name)}</strong></div>
  </div></div>`:""}
  <div class="panel"><h2>⭐ MVP Race</h2><table><tr><th>#</th><th>Server</th><th>Team</th><th>Points</th></tr>${ps.map((s,i)=>`<tr><td>${i+1}</td><td>${i===0?"🏆 ":""}${esc(s.name)}</td><td>${esc(teamLabel(s.team))}</td><td><b>${serverScore(s)}</b></td></tr>`).join("")||'<tr><td colspan="4">No servers yet.</td></tr>'}</table></div>
+ <div class="panel"><h2>🥉 Badge Case</h2><p class="muted">Lifetime tiers — Bronze → Silver → Gold — built automatically from every shift played.</p>${renderBadgeCase()}</div>
  <div class="panel"><h2>📈 Score Trends</h2>${renderTrendChart()}</div>
- <div class="panel"><h2>📅 Shift History</h2>${S.history.length?S.history.slice().reverse().map(h=>`<div class="score" style="margin-bottom:7px"><b>Week ${h.week}, Shift ${h.shift}</b><span class="muted">${h.date}</span><div>${h.scores.map(x=>`${esc(x.name)}: ${x.score}`).join(" • ")}</div></div>`).join(""):"<span class='muted'>No completed shifts yet.</span>"}</div>`;
+ <div class="panel"><h2>📅 Shift History</h2>${S.history.length?`<button class="primary" style="margin-bottom:10px" onclick="copyRecap(${S.history.length-1})">📋 Copy Latest Recap</button>`:""}${S.history.length?S.history.slice().reverse().map((h,ri)=>{let idx=S.history.length-1-ri;return `<div class="score" style="margin-bottom:7px"><div class="row" style="justify-content:space-between"><b>Week ${h.week}, Shift ${h.shift}</b><button style="padding:3px 9px;min-height:auto" onclick="copyRecap(${idx})">📋 Copy</button></div><span class="muted">${h.date}</span><div>${h.scores.map(x=>`${esc(x.name)}: ${x.score}`).join(" • ")}</div></div>`}).join(""):"<span class='muted'>No completed shifts yet.</span>"}</div>`;
 }
 function renderRules(){
- document.getElementById("rules").innerHTML=`<div class="panel"><h2>📋 League Rules</h2><ul><li>Each time you ring up an item on your board, its printed points are added — selling it again stacks more points.</li><li>Every player gets their own random 25-square (5×5) board drawn from the Menu Items list in Setup — a fresh one is dealt automatically at the start of each shift, or tap 🔀 New Board in Scorekeeper to redeal early. Editing the menu redeals every board too.</li><li>Each completed row, column, or diagonal is worth +5. Completing 2+ lines earns an additional +5 bonus.</li><li>The first server to complete a Bingo line gets 🔥 Clutch +10.</li><li>A full 25-square card earns 🏆 +25.</li><li>Every board includes a ⏱️ Ticket Time Bonus square. Toggle Rush Hour / Normal Hours in Scorekeeper to set the goal — 20 minutes during a rush, 12 minutes during normal times — then use Start Ticket / Beat the Goal to time it and ring it up automatically, or tap the square by hand.</li><li>Use the Scorekeeper tab during the shift; End Shift records results and deals fresh boards for the next shift.</li><li>Shift Awards (League tab) are calculated live: MVP (top score), Clutch (current first-Bingo holder), Closer (most items rung up), Lockdown (most completed lines), and Sixth Man (widest menu coverage).</li><li>Skill ratings are optional role-play stats and do not change points automatically.</li></ul></div>`;
+ document.getElementById("rules").innerHTML=`<div class="panel"><h2>📋 League Rules</h2><ul><li>Each time you ring up an item on your board, its printed points are added — selling it again stacks more points.</li><li>Every player gets their own random 25-square (5×5) board drawn from the Menu Items list in Setup — a fresh one is dealt automatically at the start of each shift, or tap 🔀 New Board in Scorekeeper to redeal early. Editing the menu redeals every board too.</li><li>Each completed row, column, or diagonal is worth +5. Completing 2+ lines earns an additional +5 bonus.</li><li>The first server to complete a Bingo line gets 🔥 Clutch +10.</li><li>A full 25-square card earns 🏆 +25.</li><li>Every board includes a ⏱️ Ticket Time Check square — a periodic self-check, not a live stopwatch. Toggle Rush Hour / Normal Hours in Scorekeeper to set how often you check: every 30 minutes during a rush, every 20 minutes during normal times. When you glance at your tickets and they're coming in under that goal, tap the square to log it — it's gated so you can only log one check per interval.</li><li>Use the Scorekeeper tab during the shift; End Shift records results and deals fresh boards for the next shift.</li><li>Shift Awards (League tab) are calculated live: MVP (top score), Clutch (current first-Bingo holder), Closer (most items rung up), Lockdown (most completed lines), and Sixth Man (widest menu coverage).</li><li>⚡ Power-up: once per shift, tap "Use Double Points" in Scorekeeper to arm it — your very next ring-up banks double that item's points. Use it on a big-ticket item for the biggest payoff.</li><li>🥉 Badge Case (League tab): lifetime Bronze/Silver/Gold tiers for each award, built automatically from every shift you've ever played — no extra taps needed.</li><li>📋 Recap: after End Shift, hit "Copy Latest Recap" (or Copy next to any past shift) in League to copy a shareable text summary — paste it straight into your group chat.</li><li>Skill ratings are optional role-play stats and do not change points automatically.</li></ul></div>`;
 }
 document.getElementById("reset").onclick=()=>{if(confirm("Erase the entire league, teams, players, and history?")){localStorage.removeItem("fantasyServerLeagueV2");location.reload()}};
 
-let room=null, roomUser=null, chatLog=[], peerNames=[];
-async function initRoom(){
- if(!window.claude||!window.claude.use)return;
- try{
-  room=await window.claude.use("room");
-  if(!room)return;
-  roomUser=await window.claude.use("user");
-  room.on("chat",async msg=>{
-   let name="Guest";
-   if(msg.by&&roomUser){try{let ps=await roomUser.profiles([msg.by]);name=(ps[msg.by]&&ps[msg.by].name)||"Someone"}catch(e){}}
-   chatLog.push({name,text:(msg.data&&msg.data.text)||"",isMe:msg.isMe});
-   if(chatLog.length>100)chatLog.shift();
-   if(currentView==="chat")renderChat();
-  });
-  room.onPeers(async ()=>{
-   let peers=room.peers();
-   let ids=[...new Set(peers.map(p=>p.by).filter(Boolean))];
-   let names={};
-   if(roomUser&&ids.length){try{names=await roomUser.profiles(ids)}catch(e){}}
-   peerNames=peers.map(p=>p.isMe?"You":((p.by&&names[p.by]&&names[p.by].name)||(p.guest?"Guest":"Someone")));
-   if(currentView==="chat")renderChat();
-  });
-  if(currentView==="chat")renderChat();
- }catch(e){}
-}
-function renderChat(){
- let v=document.getElementById("chat");
- v.innerHTML=`<div class="panel"><h2>💬 Live Chat</h2><p class="muted">Live between everyone who has this page open right now — nothing is saved after you close it.</p>
- <p class="muted">${peerNames.length?`🟢 ${peerNames.length} here: ${peerNames.map(esc).join(", ")}`:"Connecting…"}</p>
- <div class="chatlog" id="chatlog">${chatLog.length?chatLog.map(m=>`<div class="msg ${m.isMe?"me":""}"><b>${esc(m.name)}</b>${esc(m.text)}</div>`).join(""):'<span class="muted">No messages yet. Say hi 👋</span>'}</div>
- <div class="row" style="margin-top:8px"><input id="chatInput" placeholder="${room?"Type a message…":"Live chat unavailable in this view"}" ${room?"":"disabled"} onkeydown="if(event.key==='Enter')sendChat()" style="flex:1 1 auto"><button class="primary" onclick="sendChat()" ${room?"":"disabled"}>Send</button></div></div>`;
- let log=document.getElementById("chatlog");if(log)log.scrollTop=log.scrollHeight;
-}
-async function sendChat(){
- let input=document.getElementById("chatInput");if(!input)return;
- let text=input.value.trim();if(!text||!room)return;
- input.value="";
- try{await room.emit("chat",{text})}catch(e){toast("Message failed to send")}
-}
-initRoom();
 show("setup");
 </script>
 </body></html>
